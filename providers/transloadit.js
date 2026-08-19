@@ -4,6 +4,13 @@
 // Auth: Auth Key + Auth Secret (from your Transloadit Workspace's
 // Credentials page). The official SDK signs requests for you.
 //
+// NOTE: `transloadit` is now v4 (https://transloadit.com/docs/sdks/node-sdk/)
+// — an ESM-only package. v3 hardcoded HMAC-SHA1 signing, which newer Auth
+// Keys reject with INVALID_SIGNATURE ("...demands sha384 instead of
+// sha1?"); v4 signs with SHA384 as Transloadit's API now expects. Since
+// this project is CommonJS, the client is loaded via a cached dynamic
+// import() rather than a top-level require().
+//
 // - Text-to-image: just a prompt, no input image.
 // - Image editing: pass a source image URL — Transloadit imports it via the
 //   /http/import Robot in the same Assembly, then feeds it into
@@ -13,15 +20,30 @@
 //
 // Default model: google/nano-banana (per Transloadit's own Robot default).
 
-const Transloadit = require('transloadit');
-
 const DEFAULT_MODEL = 'google/nano-banana';
+
+// Cached so every provider instance reuses the same dynamic import instead
+// of re-importing the ESM module on every request.
+let transloaditModulePromise = null;
+function loadTransloaditModule() {
+  if (!transloaditModulePromise) transloaditModulePromise = import('transloadit');
+  return transloaditModulePromise;
+}
 
 class TransloaditProvider {
   constructor(authKey, authSecret) {
     if (!authKey) throw new Error('Transloadit Auth Key is required');
     if (!authSecret) throw new Error('Transloadit Auth Secret is required');
-    this.client = new Transloadit({ authKey, authSecret });
+    this.authKey = authKey;
+    this.authSecret = authSecret;
+    this._client = null;
+  }
+
+  async _getClient() {
+    if (this._client) return this._client;
+    const { Transloadit } = await loadTransloaditModule();
+    this._client = new Transloadit({ authKey: this.authKey, authSecret: this.authSecret });
+    return this._client;
   }
 
   // Runs an Assembly with a single /image/generate step (plus an optional
@@ -29,6 +51,8 @@ class TransloaditProvider {
   // file's URL.
   async _runGenerate({ prompt, model, imageUrl, format, width, height, aspect_ratio, seed, style, num_outputs }) {
     if (!prompt || !prompt.trim()) throw new Error('prompt is required');
+
+    const client = await this._getClient();
 
     const steps = {};
     const generateStep = {
@@ -53,13 +77,18 @@ class TransloaditProvider {
 
     let result;
     try {
-      result = await this.client.createAssembly({
+      result = await client.createAssembly({
         params: { steps },
         waitForCompletion: true,
       });
     } catch (err) {
-      const reason = err?.assembly?.error || err?.message || 'request failed';
-      throw new Error(`Transloadit error: ${reason}`);
+      // v4 throws ApiError with details under `.response` (v3 used
+      // `.assembly.error` / a plain `.message`) — check both shapes so this
+      // keeps working across SDK versions.
+      const reason =
+        err?.response?.message || err?.response?.error || err?.assembly?.error || err?.message || 'request failed';
+      const assemblyId = err?.response?.assembly_id;
+      throw new Error(`Transloadit error: ${reason}${assemblyId ? ` (assembly ${assemblyId})` : ''}`);
     }
 
     if (result?.error) {
