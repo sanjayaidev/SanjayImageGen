@@ -73,6 +73,17 @@
   .result img{width:100%;max-width:420px;display:block;border:1px solid #3a3632;margin-bottom:10px;}
   .result .meta{font-size:11px;color:#8a8378;}
   .result a{color:var(--developer);}
+  .result-actions{display:flex;gap:8px;margin-top:10px;}
+  .result-actions button{
+    appearance:none;border:1px solid var(--developer);background:var(--developer);
+    color:#fff;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    padding:8px 14px;border-radius:2px;cursor:pointer;
+  }
+  .result-actions button:hover{opacity:0.9;}
+  .result-actions button.secondary{
+    background:transparent;border-color:#5c574e;color:#a39c8f;
+  }
+  .result-actions button.secondary:hover{border-color:var(--paper);color:var(--paper);}
 
   .chat-log{border:1px solid #3a3632;background:#1a1815;border-radius:3px;padding:14px;height:340px;overflow-y:auto;margin-bottom:14px;}
   .msg{margin-bottom:14px;}
@@ -87,7 +98,23 @@
   .frame{border:1px solid #3a3632;background:#1a1815;border-radius:2px;overflow:hidden;position:relative;}
   .frame img{width:100%;aspect-ratio:1;object-fit:cover;display:block;}
   .frame .tag{position:absolute;top:0;left:0;background:rgba(0,0,0,.7);color:#c9c0ac;font-size:9px;padding:2px 5px;letter-spacing:.05em;text-transform:uppercase;}
+  .frame .actions{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.85);display:flex;gap:4px;padding:6px;justify-content:center;opacity:0;transition:opacity .2s;}
+  .frame:hover .actions{opacity:1;}
+  .frame .actions button{background:var(--developer);border:none;color:#fff;font-size:9px;padding:4px 8px;border-radius:2px;cursor:pointer;font-family:var(--mono);text-transform:uppercase;}
+  .frame .actions button.view-btn{background:#5c574e;}
   .empty{color:#5c574e;font-size:12px;padding:20px 0;}
+  .frame-prompt{font-size:9px;color:#8a8378;padding:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;z-index:1000;}
+  .modal-overlay.show{display:flex;}
+  .modal-content{background:#1a1815;border:1px solid #3a3632;border-radius:4px;padding:20px;max-width:90vw;max-height:90vh;overflow:auto;position:relative;}
+  .modal-close{position:absolute;top:10px;right:10px;background:transparent;border:none;color:#a39c8f;font-size:20px;cursor:pointer;}
+  .modal-image{max-width:100%;max-height:70vh;display:block;margin-bottom:14px;}
+  .modal-prompt{font-family:var(--serif);font-size:14px;color:var(--paper);margin-bottom:14px;line-height:1.5;}
+  .modal-meta{font-size:11px;color:#8a8378;margin-bottom:14px;}
+  .modal-actions{display:flex;gap:8px;}
+  .modal-actions button{appearance:none;border:1px solid var(--developer);background:var(--developer);color:#fff;font-family:var(--mono);font-size:11px;padding:8px 14px;border-radius:2px;cursor:pointer;}
+  .copy-feedback{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--developer);color:#fff;padding:8px 16px;border-radius:4px;font-size:12px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:1001;}
+  .copy-feedback.show{opacity:1;}
 
   .hint{color:#5c574e;font-size:11px;margin-top:6px;}
 </style>
@@ -135,13 +162,26 @@
     <div class="result" id="gen-result">
       <img id="gen-img" />
       <div class="meta" id="gen-meta"></div>
+      <div class="result-actions">
+        <button id="gen-download">Download</button>
+        <button id="gen-copy-prompt" class="secondary">Copy prompt</button>
+      </div>
     </div>
   </section>
 
   <!-- EDIT -->
   <section class="panel" id="panel-edit">
-    <label>Source image URL</label>
-    <input type="text" id="edit-url" placeholder="https://..." />
+    <label>Source image</label>
+    <div class="row" style="margin-bottom:0;">
+      <div>
+        <input type="text" id="edit-url" placeholder="https://..." />
+      </div>
+      <div style="display:flex;align-items:center;">
+        <span style="color:#8a8378;font-size:12px;margin:0 8px;">or</span>
+        <input type="file" id="edit-file" accept="image/*" style="font-size:12px;" />
+      </div>
+    </div>
+    <div class="hint" id="edit-file-hint" style="display:none;">Using uploaded file: <span id="edit-file-name"></span></div>
 
     <label>Saved prompt <span class="hint">(optional — loaded from your prompt library)</span></label>
     <select id="edit-saved-prompt">
@@ -170,6 +210,10 @@
     <div class="result" id="edit-result">
       <img id="edit-img" />
       <div class="meta" id="edit-meta"></div>
+      <div class="result-actions">
+        <button id="edit-download">Download</button>
+        <button id="edit-copy-prompt" class="secondary">Copy prompt</button>
+      </div>
     </div>
   </section>
 
@@ -200,6 +244,23 @@
     <h2>Contact sheet — recent history</h2>
     <div class="frames" id="frames"><div class="empty">Nothing developed yet.</div></div>
   </div>
+
+  <!-- Modal for viewing image details -->
+  <div class="modal-overlay" id="image-modal">
+    <div class="modal-content">
+      <button class="modal-close" id="modal-close">&times;</button>
+      <img class="modal-image" id="modal-img" />
+      <div class="modal-prompt" id="modal-prompt"></div>
+      <div class="modal-meta" id="modal-meta"></div>
+      <div class="modal-actions">
+        <button id="modal-download">Download</button>
+        <button id="modal-copy-prompt">Copy prompt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Copy feedback toast -->
+  <div class="copy-feedback" id="copy-feedback">Prompt copied!</div>
 
 </div>
 
@@ -325,6 +386,9 @@ $('gen-go').addEventListener('click', async () => {
     $('gen-img').src = row.imgbb_url;
     $('gen-meta').textContent = `${row.provider} · ${row.model || ''}`;
     $('gen-result').classList.add('show');
+    // Store current prompt for copy button
+    $('gen-download').dataset.imageUrl = row.imgbb_url;
+    $('gen-copy-prompt').dataset.prompt = row.prompt;
     loadHistory();
   } catch (e) {
     setStatus('gen-status', e.message, 'err');
@@ -366,6 +430,9 @@ $('edit-go').addEventListener('click', async () => {
     $('edit-img').src = row.imgbb_url;
     $('edit-meta').textContent = `${row.provider} · ${row.model || ''}`;
     $('edit-result').classList.add('show');
+    // Store current prompt and image for buttons
+    $('edit-download').dataset.imageUrl = row.imgbb_url;
+    $('edit-copy-prompt').dataset.prompt = row.prompt;
     loadHistory();
   } catch (e) {
     setStatus('edit-status', e.message, 'err');
@@ -426,11 +493,200 @@ async function loadHistory() {
     for (const r of rows) {
       const div = document.createElement('div');
       div.className = 'frame';
-      div.innerHTML = `<span class="tag">${r.type} · ${r.provider}</span><img src="${r.imgbb_url}" loading="lazy" title="${(r.prompt||'').replace(/"/g,'&quot;')}" />`;
+      div.innerHTML = `
+        <span class="tag">${r.type} · ${r.provider}</span>
+        <img src="${r.imgbb_url}" loading="lazy" />
+        <div class="frame-prompt" title="${(r.prompt||'').replace(/"/g,'&quot;')}">${r.prompt || ''}</div>
+        <div class="actions">
+          <button class="view-btn" data-id="${r.id}" data-url="${r.imgbb_url}" data-prompt="${(r.prompt||'').replace(/"/g,'&quot;')}" data-provider="${r.provider}" data-model="${r.model||''}">View</button>
+          <button class="download-btn" data-url="${r.imgbb_url}">Download</button>
+        </div>
+      `;
       frames.appendChild(div);
     }
   } catch (e) { /* silent */ }
 }
+
+// ── Download helper ─────────────────────────────────────
+async function downloadImage(url, filename = 'image.png') {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objectUrl);
+  } catch (e) {
+    // Fallback: open in new tab
+    window.open(url, '_blank');
+  }
+}
+
+// ── Copy prompt helper ─────────────────────────────────
+let copyTimeout = null;
+function showCopyFeedback() {
+  const fb = $('copy-feedback');
+  fb.classList.add('show');
+  clearTimeout(copyTimeout);
+  copyTimeout = setTimeout(() => fb.classList.remove('show'), 1500);
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showCopyFeedback();
+  } catch (e) {
+    // Fallback for older browsers
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showCopyFeedback();
+  }
+}
+
+// ── Modal helpers ───────────────────────────────────────
+let currentModalData = null;
+
+function openModal(data) {
+  currentModalData = data;
+  $('modal-img').src = data.url;
+  $('modal-prompt').textContent = data.prompt || 'No prompt saved.';
+  $('modal-meta').textContent = `${data.provider || ''} · ${data.model || ''}`.replace(/^ · /, '').trim();
+  $('modal-download').dataset.imageUrl = data.url;
+  $('modal-copy-prompt').dataset.prompt = data.prompt || '';
+  $('image-modal').classList.add('show');
+}
+
+function closeModal() {
+  $('image-modal').classList.remove('show');
+  currentModalData = null;
+}
+
+$('modal-close').addEventListener('click', closeModal);
+$('image-modal').addEventListener('click', (e) => {
+  if (e.target === $('image-modal')) closeModal();
+});
+
+$('modal-download').addEventListener('click', () => {
+  if (currentModalData && currentModalData.url) {
+    downloadImage(currentModalData.url);
+  }
+});
+
+$('modal-copy-prompt').addEventListener('click', () => {
+  if (currentModalData && currentModalData.prompt) {
+    copyToClipboard(currentModalData.prompt);
+  }
+});
+
+// ── Download & copy buttons for generated/edited images ─
+$('gen-download').addEventListener('click', () => {
+  const url = $('gen-download').dataset.imageUrl;
+  if (url) downloadImage(url);
+});
+
+$('gen-copy-prompt').addEventListener('click', () => {
+  const prompt = $('gen-copy-prompt').dataset.prompt;
+  if (prompt) copyToClipboard(prompt);
+});
+
+$('edit-download').addEventListener('click', () => {
+  const url = $('edit-download').dataset.imageUrl;
+  if (url) downloadImage(url);
+});
+
+$('edit-copy-prompt').addEventListener('click', () => {
+  const prompt = $('edit-copy-prompt').dataset.prompt;
+  if (prompt) copyToClipboard(prompt);
+});
+
+// ── History frame actions (event delegation) ────────────
+$('frames').addEventListener('click', (e) => {
+  const viewBtn = e.target.closest('.view-btn');
+  const downloadBtn = e.target.closest('.download-btn');
+  
+  if (viewBtn) {
+    openModal({
+      id: viewBtn.dataset.id,
+      url: viewBtn.dataset.url,
+      prompt: viewBtn.dataset.prompt,
+      provider: viewBtn.dataset.provider,
+      model: viewBtn.dataset.model,
+    });
+  } else if (downloadBtn) {
+    downloadImage(downloadBtn.dataset.url);
+  }
+});
+
+// ── Edit panel file upload support ─────────────────────
+let editFileDataUrl = null;
+
+$('edit-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  $('edit-file-name').textContent = file.name;
+  $('edit-file-hint').style.display = 'block';
+  
+  // Convert to data URL for preview/use
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    editFileDataUrl = evt.target.result;
+    // Clear URL field when using file upload
+    $('edit-url').value = '';
+  };
+  reader.readAsDataURL(file);
+});
+
+// Replace the edit-go handler with one that supports file uploads
+const existingEditHandlers = $('edit-go').cloneNode(false);
+$('edit-go').replaceWith(existingEditHandlers);
+
+existingEditHandlers.addEventListener('click', async () => {
+  let image_url = $('edit-url').value.trim();
+  const prompt = $('edit-prompt').value.trim();
+  
+  // If file uploaded, inform user that URL is still required for most models
+  if (editFileDataUrl && !image_url) {
+    return setStatus('edit-status', 'For edit operations, please provide a public URL. File upload is available but requires backend support for base64 input.', 'err');
+  }
+  
+  if (!image_url) return setStatus('edit-status', 'Source image URL is required.', 'err');
+  if (!prompt) return setStatus('edit-status', 'Edit instruction is required.', 'err');
+  if (!editCtl) return setStatus('edit-status', 'Still loading providers, try again in a second.', 'err');
+
+  const body = { prompt, image_url, provider: editCtl.getProvider(), model: editCtl.getModel(), ...editCtl.getParams() };
+
+  existingEditHandlers.disabled = true;
+  $('edit-result').classList.remove('show');
+  setStatus('edit-status', 'Developing edit… this can take up to a minute.');
+  try {
+    const row = await api('/api/image/edit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    setStatus('edit-status', 'Done.', 'ok');
+    $('edit-img').src = row.imgbb_url;
+    $('edit-meta').textContent = `${row.provider} · ${row.model || ''}`;
+    $('edit-result').classList.add('show');
+    // Store current prompt and image for buttons
+    $('edit-download').dataset.imageUrl = row.imgbb_url;
+    $('edit-copy-prompt').dataset.prompt = row.prompt;
+    loadHistory();
+  } catch (e) {
+    setStatus('edit-status', e.message, 'err');
+  } finally {
+    existingEditHandlers.disabled = false;
+  }
+});
 
 initGenerate();
 initEdit();
