@@ -365,8 +365,9 @@ async function initGenerate() {
     paramsEl: $('gen-params'),
     catalog,
   });
+  // Wire saved prompts after catalog is loaded
+  wireSavedPrompts('gen-saved-prompt', 'generate', 'gen-prompt');
 }
-wireSavedPrompts('gen-saved-prompt', 'generate', 'gen-prompt');
 
 $('gen-go').addEventListener('click', async () => {
   const prompt = $('gen-prompt').value.trim();
