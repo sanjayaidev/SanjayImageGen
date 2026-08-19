@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SanjayAIHub — AI Console</title>
+<style>
+  :root{
+    --ink:#151312;
+    --paper:#efe9df;
+    --paper-dim:#e2dbcd;
+    --line:#c9c0ac;
+    --safelight:#b5482f;
+    --safelight-dim:#8a3722;
+    --developer:#3f5c4c;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: "Georgia", "Iowan Old Style", serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:var(--mono);
+    font-size:14px;
+    line-height:1.5;
+    min-height:100vh;
+  }
+  .wrap{max-width:980px;margin:0 auto;padding:28px 20px 80px;}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid #3a3632;padding-bottom:18px;margin-bottom:28px;}
+  header .brand{font-family:var(--serif);font-size:26px;letter-spacing:0.5px;color:var(--paper);}
+  header .brand em{color:var(--safelight);font-style:normal;}
+  header .tag{color:#8a8378;font-size:12px;text-transform:uppercase;letter-spacing:0.14em;}
+
+  nav{display:flex;gap:2px;margin-bottom:22px;background:#211f1c;border:1px solid #3a3632;padding:3px;border-radius:3px;width:fit-content;}
+  nav button{
+    appearance:none;border:none;background:transparent;color:#a39c8f;
+    font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    padding:9px 16px;cursor:pointer;border-radius:2px;
+  }
+  nav button.active{background:var(--safelight);color:#fff;}
+
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#8a8378;margin:14px 0 6px;}
+  label:first-child{margin-top:0;}
+  textarea,input[type=text],select{
+    width:100%;background:var(--paper);color:var(--ink);border:1px solid var(--line);
+    border-radius:2px;padding:10px 12px;font-family:var(--mono);font-size:13px;
+  }
+  textarea{min-height:74px;resize:vertical;}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:640px){.row{grid-template-columns:1fr;}}
+
+  .section-label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#5c574e;margin:22px 0 8px;border-top:1px solid #2a2723;padding-top:16px;}
+
+  button.go{
+    margin-top:20px;appearance:none;border:1px solid var(--safelight);background:var(--safelight);
+    color:#fff;font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+    padding:12px 22px;border-radius:2px;cursor:pointer;
+  }
+  button.go:hover{background:var(--safelight-dim);}
+  button.go:disabled{opacity:.5;cursor:default;}
+
+  .status{margin-top:14px;font-size:12px;color:#a39c8f;min-height:16px;}
+  .status.err{color:var(--safelight);}
+  .status.ok{color:var(--developer);}
+
+  .result{margin-top:22px;display:none;border:1px solid #3a3632;padding:14px;border-radius:3px;background:#1a1815;}
+  .result.show{display:block;}
+  .result img{width:100%;max-width:420px;display:block;border:1px solid #3a3632;margin-bottom:10px;}
+  .result .meta{font-size:11px;color:#8a8378;}
+  .result a{color:var(--developer);}
+
+  .chat-log{border:1px solid #3a3632;background:#1a1815;border-radius:3px;padding:14px;height:340px;overflow-y:auto;margin-bottom:14px;}
+  .msg{margin-bottom:14px;}
+  .msg .who{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#8a8378;margin-bottom:3px;}
+  .msg.user .who{color:var(--developer);}
+  .msg.assistant .who{color:var(--safelight);}
+  .msg .body{color:var(--paper);white-space:pre-wrap;font-family:var(--serif);font-size:14.5px;}
+
+  .filmstrip{margin-top:36px;}
+  .filmstrip h2{font-family:var(--serif);font-size:16px;font-weight:normal;color:#a39c8f;margin-bottom:12px;}
+  .frames{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;}
+  .frame{border:1px solid #3a3632;background:#1a1815;border-radius:2px;overflow:hidden;position:relative;}
+  .frame img{width:100%;aspect-ratio:1;object-fit:cover;display:block;}
+  .frame .tag{position:absolute;top:0;left:0;background:rgba(0,0,0,.7);color:#c9c0ac;font-size:9px;padding:2px 5px;letter-spacing:.05em;text-transform:uppercase;}
+  .empty{color:#5c574e;font-size:12px;padding:20px 0;}
+
+  .hint{color:#5c574e;font-size:11px;margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">Sanjay<em>AIHub</em></div>
+    <div class="tag">image lab · no login</div>
+  </header>
+
+  <nav>
+    <button data-panel="generate" class="active">Generate</button>
+    <button data-panel="edit">Edit</button>
+    <button data-panel="chat">Chat</button>
+  </nav>
+
+  <!-- GENERATE -->
+  <section class="panel active" id="panel-generate">
+    <label>Saved prompt <span class="hint">(optional — loaded from your prompt library)</span></label>
+    <select id="gen-saved-prompt">
+      <option value="">— pick a saved prompt —</option>
+    </select>
+
+    <label>Prompt</label>
+    <textarea id="gen-prompt" placeholder="A lighthouse at dusk, storm clouds, long exposure, teal and amber palette"></textarea>
+
+    <div class="row">
+      <div>
+        <label>Provider</label>
+        <select id="gen-provider"></select>
+      </div>
+      <div>
+        <label>Model</label>
+        <select id="gen-model"></select>
+      </div>
+    </div>
+
+    <div class="section-label">Parameters</div>
+    <div id="gen-params"></div>
+
+    <button class="go" id="gen-go">Develop image</button>
+    <div class="status" id="gen-status"></div>
+    <div class="result" id="gen-result">
+      <img id="gen-img" />
+      <div class="meta" id="gen-meta"></div>
+    </div>
+  </section>
+
+  <!-- EDIT -->
+  <section class="panel" id="panel-edit">
+    <label>Source image URL</label>
+    <input type="text" id="edit-url" placeholder="https://..." />
+
+    <label>Saved prompt <span class="hint">(optional — loaded from your prompt library)</span></label>
+    <select id="edit-saved-prompt">
+      <option value="">— pick a saved prompt —</option>
+    </select>
+
+    <label>Edit instruction</label>
+    <textarea id="edit-prompt" placeholder="Replace the sky with a starry night, keep everything else unchanged"></textarea>
+
+    <div class="row">
+      <div>
+        <label>Provider</label>
+        <select id="edit-provider"></select>
+      </div>
+      <div>
+        <label>Model</label>
+        <select id="edit-model"></select>
+      </div>
+    </div>
+
+    <div class="section-label">Parameters</div>
+    <div id="edit-params"></div>
+
+    <button class="go" id="edit-go">Develop edit</button>
+    <div class="status" id="edit-status"></div>
+    <div class="result" id="edit-result">
+      <img id="edit-img" />
+      <div class="meta" id="edit-meta"></div>
+    </div>
+  </section>
+
+  <!-- CHAT -->
+  <section class="panel" id="panel-chat">
+    <div class="row" style="margin-bottom:14px;">
+      <div>
+        <label>Mode</label>
+        <select id="chat-mode">
+          <option value="chat">Chat</option>
+          <option value="prompt-generator">Prompt generator</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button class="go" id="chat-new" style="margin-top:0;width:100%;">New conversation</button>
+      </div>
+    </div>
+
+    <div class="chat-log" id="chat-log"><div class="empty">No messages yet.</div></div>
+
+    <textarea id="chat-input" placeholder="Type a message..."></textarea>
+    <button class="go" id="chat-send">Send</button>
+    <div class="status" id="chat-status"></div>
+  </section>
+
+  <div class="filmstrip">
+    <h2>Contact sheet — recent history</h2>
+    <div class="frames" id="frames"><div class="empty">Nothing developed yet.</div></div>
+  </div>
+
+</div>
+
+<script src="js/adaptive-params.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+
+// ── Tabs ──────────────────────────────────────────────
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    $('panel-' + btn.dataset.panel).classList.add('active');
+  });
+});
+
+function setStatus(id, text, kind) {
+  const el = $(id);
+  el.textContent = text || '';
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+function fillSelect(select, values) {
+  select.innerHTML = '';
+  values.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = v;
+    select.appendChild(o);
+  });
+}
+
+// ── Generic provider/model/params controller for a panel ───────────────
+function buildPanelController({ providerSelect, modelSelect, paramsEl, catalog }) {
+  let panel = null; // AdaptiveParams instance
+
+  function modelsForProvider(provider) {
+    return catalog.models[provider] || [];
+  }
+
+  function renderModelsFor(provider, preferredModel) {
+    const models = modelsForProvider(provider);
+    fillSelect(modelSelect, models);
+    const defaultModel = catalog.defaults[provider];
+    const useModel = (preferredModel && models.includes(preferredModel)) ? preferredModel : (defaultModel || models[0]);
+    modelSelect.value = useModel;
+    renderParamsFor(useModel);
+  }
+
+  function renderParamsFor(model) {
+    const schema = catalog.schemas[model] || {};
+    if (!panel) panel = window.AdaptiveParams.mount(paramsEl, schema);
+    else panel.setSchema(schema);
+  }
+
+  fillSelect(providerSelect, catalog.providers);
+  providerSelect.value = catalog.defaults.provider || catalog.providers[0];
+  renderModelsFor(providerSelect.value);
+
+  providerSelect.addEventListener('change', () => renderModelsFor(providerSelect.value));
+  modelSelect.addEventListener('change', () => renderParamsFor(modelSelect.value));
+
+  return {
+    getProvider: () => providerSelect.value,
+    getModel: () => modelSelect.value,
+    getParams: () => (panel ? panel.getValues() : {}),
+  };
+}
+
+// ── Saved-prompt dropdown ───────────────────────────────────────────────
+async function wireSavedPrompts(selectId, moduleKey, textareaId) {
+  const select = $(selectId);
+  try {
+    const rows = await api(`/api/prompts?module=${moduleKey}`);
+    rows.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.full_prompt;
+      o.textContent = r.headline;
+      select.appendChild(o);
+    });
+  } catch (e) { /* prompt library table may just be empty — fine */ }
+
+  select.addEventListener('change', () => {
+    if (select.value) $(textareaId).value = select.value;
+  });
+}
+
+// ── Generate ──────────────────────────────────────────
+let genCtl = null;
+async function initGenerate() {
+  const catalog = await api('/api/image/catalog?type=generate');
+  genCtl = buildPanelController({
+    providerSelect: $('gen-provider'),
+    modelSelect: $('gen-model'),
+    paramsEl: $('gen-params'),
+    catalog,
+  });
+}
+wireSavedPrompts('gen-saved-prompt', 'generate', 'gen-prompt');
+
+$('gen-go').addEventListener('click', async () => {
+  const prompt = $('gen-prompt').value.trim();
+  if (!prompt) return setStatus('gen-status', 'Prompt is required.', 'err');
+  if (!genCtl) return setStatus('gen-status', 'Still loading providers, try again in a second.', 'err');
+
+  const body = { prompt, provider: genCtl.getProvider(), model: genCtl.getModel(), ...genCtl.getParams() };
+
+  $('gen-go').disabled = true;
+  $('gen-result').classList.remove('show');
+  setStatus('gen-status', 'Developing… this can take up to a minute.');
+  try {
+    const row = await api('/api/image/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    setStatus('gen-status', 'Done.', 'ok');
+    $('gen-img').src = row.imgbb_url;
+    $('gen-meta').textContent = `${row.provider} · ${row.model || ''}`;
+    $('gen-result').classList.add('show');
+    loadHistory();
+  } catch (e) {
+    setStatus('gen-status', e.message, 'err');
+  } finally {
+    $('gen-go').disabled = false;
+  }
+});
+
+// ── Edit ──────────────────────────────────────────────
+let editCtl = null;
+async function initEdit() {
+  const catalog = await api('/api/image/catalog?type=edit');
+  editCtl = buildPanelController({
+    providerSelect: $('edit-provider'),
+    modelSelect: $('edit-model'),
+    paramsEl: $('edit-params'),
+    catalog,
+  });
+}
+wireSavedPrompts('edit-saved-prompt', 'edit', 'edit-prompt');
+
+$('edit-go').addEventListener('click', async () => {
+  const image_url = $('edit-url').value.trim();
+  const prompt = $('edit-prompt').value.trim();
+  if (!image_url) return setStatus('edit-status', 'Source image URL is required.', 'err');
+  if (!prompt) return setStatus('edit-status', 'Edit instruction is required.', 'err');
+  if (!editCtl) return setStatus('edit-status', 'Still loading providers, try again in a second.', 'err');
+
+  const body = { prompt, image_url, provider: editCtl.getProvider(), model: editCtl.getModel(), ...editCtl.getParams() };
+
+  $('edit-go').disabled = true;
+  $('edit-result').classList.remove('show');
+  setStatus('edit-status', 'Developing edit… this can take up to a minute.');
+  try {
+    const row = await api('/api/image/edit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    setStatus('edit-status', 'Done.', 'ok');
+    $('edit-img').src = row.imgbb_url;
+    $('edit-meta').textContent = `${row.provider} · ${row.model || ''}`;
+    $('edit-result').classList.add('show');
+    loadHistory();
+  } catch (e) {
+    setStatus('edit-status', e.message, 'err');
+  } finally {
+    $('edit-go').disabled = false;
+  }
+});
+
+// ── Chat ──────────────────────────────────────────────
+let conversationId = null;
+
+function renderMessage(role, content) {
+  const log = $('chat-log');
+  if (log.querySelector('.empty')) log.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = `<div class="who">${role === 'user' ? 'You' : 'Assistant'}</div><div class="body"></div>`;
+  div.querySelector('.body').textContent = content;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+$('chat-new').addEventListener('click', () => {
+  conversationId = null;
+  $('chat-log').innerHTML = '<div class="empty">No messages yet.</div>';
+  setStatus('chat-status', 'Started a new conversation.');
+});
+
+$('chat-send').addEventListener('click', async () => {
+  const message = $('chat-input').value.trim();
+  if (!message) return;
+  renderMessage('user', message);
+  $('chat-input').value = '';
+  $('chat-send').disabled = true;
+  setStatus('chat-status', 'Thinking…');
+  try {
+    const data = await api('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, conversationId, mode: $('chat-mode').value })
+    });
+    conversationId = data.conversationId;
+    renderMessage('assistant', data.reply);
+    setStatus('chat-status', '');
+  } catch (e) {
+    setStatus('chat-status', e.message, 'err');
+  } finally {
+    $('chat-send').disabled = false;
+  }
+});
+
+// ── History / contact sheet ─────────────────────────────
+async function loadHistory() {
+  try {
+    const rows = await api('/api/history/images?limit=24');
+    const frames = $('frames');
+    if (!rows.length) { frames.innerHTML = '<div class="empty">Nothing developed yet.</div>'; return; }
+    frames.innerHTML = '';
+    for (const r of rows) {
+      const div = document.createElement('div');
+      div.className = 'frame';
+      div.innerHTML = `<span class="tag">${r.type} · ${r.provider}</span><img src="${r.imgbb_url}" loading="lazy" title="${(r.prompt||'').replace(/"/g,'&quot;')}" />`;
+      frames.appendChild(div);
+    }
+  } catch (e) { /* silent */ }
+}
+
+initGenerate();
+initEdit();
+loadHistory();
+</script>
+</body>
+</html>

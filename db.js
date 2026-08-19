@@ -1,0 +1,189 @@
+// Postgres database layer. On Railway, add a Postgres plugin to your
+// project and it will inject DATABASE_URL automatically — no manual setup
+// needed beyond running the schema below once (this file does it on boot).
+
+const { Pool } = require('pg');
+
+if (!process.env.DATABASE_URL) {
+  console.error('❌ DATABASE_URL is not set. Add a Postgres database in Railway (or set it locally) before starting.');
+}
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // Railway's internal Postgres URL does not require SSL; its public/proxy
+  // URL does. This works for both without needing a separate flag.
+  ssl: process.env.DATABASE_URL?.includes('railway') || process.env.PGSSLMODE === 'require'
+    ? { rejectUnauthorized: false }
+    : false,
+});
+
+pool.on('error', (err) => {
+  console.error('❌ Unexpected Postgres pool error:', err.message);
+});
+
+async function init() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id SERIAL PRIMARY KEY,
+      title TEXT,
+      mode TEXT NOT NULL DEFAULT 'chat', -- 'chat' | 'prompt-generator'
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id SERIAL PRIMARY KEY,
+      conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL, -- 'user' | 'assistant'
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS images (
+      id SERIAL PRIMARY KEY,
+      type TEXT NOT NULL,             -- 'generate' | 'edit'
+      prompt TEXT NOT NULL,
+      provider TEXT NOT NULL,         -- 'alibaba' | 'cloudflare' | 'pixazo' | 'transloadit'
+      model TEXT,
+      source_image_url TEXT,          -- original image, for edits
+      provider_image_url TEXT,        -- the provider's (often temporary) URL
+      imgbb_url TEXT,                 -- permanent transloaded URL
+      imgbb_thumb_url TEXT,
+      imgbb_delete_url TEXT,
+      parameters JSONB,               -- extra params used
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS prompts (
+      id SERIAL PRIMARY KEY,
+      module_key TEXT NOT NULL DEFAULT 'generate', -- 'generate' | 'edit'
+      headline TEXT NOT NULL,                       -- shown in the dropdown
+      full_prompt TEXT NOT NULL,                     -- filled into the prompt box
+      sub_category TEXT,
+      tags TEXT[] DEFAULT '{}',
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      sort_order INT DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_images_type ON images(type);
+    CREATE INDEX IF NOT EXISTS idx_prompts_module ON prompts(module_key);
+  `);
+  console.log('✅ Postgres schema ready');
+}
+
+// ── Conversations / messages ──────────────────────────────────────────
+async function createConversation(mode = 'chat', title = null) {
+  const { rows } = await pool.query(
+    'INSERT INTO conversations (mode, title) VALUES ($1, $2) RETURNING id',
+    [mode, title]
+  );
+  return rows[0].id;
+}
+
+async function getConversation(id) {
+  const { rows } = await pool.query('SELECT * FROM conversations WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
+async function listConversations() {
+  const { rows } = await pool.query('SELECT * FROM conversations ORDER BY id DESC');
+  return rows;
+}
+
+async function addMessage(conversationId, role, content) {
+  await pool.query(
+    'INSERT INTO messages (conversation_id, role, content) VALUES ($1, $2, $3)',
+    [conversationId, role, content]
+  );
+}
+
+async function getMessages(conversationId) {
+  const { rows } = await pool.query(
+    'SELECT role, content, created_at FROM messages WHERE conversation_id = $1 ORDER BY id ASC',
+    [conversationId]
+  );
+  return rows;
+}
+
+// ── Images ───────────────────────────────────────────────────────────
+async function saveImage(row) {
+  const { rows } = await pool.query(
+    `INSERT INTO images
+      (type, prompt, provider, model, source_image_url, provider_image_url, imgbb_url, imgbb_thumb_url, imgbb_delete_url, parameters)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING id`,
+    [
+      row.type,
+      row.prompt,
+      row.provider,
+      row.model || null,
+      row.source_image_url || null,
+      row.provider_image_url || null,
+      row.imgbb_url || null,
+      row.imgbb_thumb_url || null,
+      row.imgbb_delete_url || null,
+      row.parameters ? JSON.stringify(row.parameters) : null,
+    ]
+  );
+  return rows[0].id;
+}
+
+async function listImages({ type, limit = 50, offset = 0 } = {}) {
+  if (type) {
+    const { rows } = await pool.query(
+      'SELECT * FROM images WHERE type = $1 ORDER BY id DESC LIMIT $2 OFFSET $3',
+      [type, limit, offset]
+    );
+    return rows;
+  }
+  const { rows } = await pool.query(
+    'SELECT * FROM images ORDER BY id DESC LIMIT $1 OFFSET $2',
+    [limit, offset]
+  );
+  return rows;
+}
+
+async function getImage(id) {
+  const { rows } = await pool.query('SELECT * FROM images WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
+async function deleteImage(id) {
+  const { rowCount } = await pool.query('DELETE FROM images WHERE id = $1', [id]);
+  return rowCount;
+}
+
+// ── Prompts (saved-prompt dropdown; rows come from your own SQL inserts) ──
+async function listPrompts({ moduleKey } = {}) {
+  if (moduleKey) {
+    const { rows } = await pool.query(
+      `SELECT id, module_key, headline, full_prompt, sub_category, tags
+       FROM prompts WHERE is_active = true AND module_key = $1
+       ORDER BY sort_order ASC, id ASC`,
+      [moduleKey]
+    );
+    return rows;
+  }
+  const { rows } = await pool.query(
+    `SELECT id, module_key, headline, full_prompt, sub_category, tags
+     FROM prompts WHERE is_active = true
+     ORDER BY sort_order ASC, id ASC`
+  );
+  return rows;
+}
+
+module.exports = {
+  pool,
+  init,
+  createConversation,
+  getConversation,
+  listConversations,
+  addMessage,
+  getMessages,
+  saveImage,
+  listImages,
+  getImage,
+  deleteImage,
+  listPrompts,
+};
