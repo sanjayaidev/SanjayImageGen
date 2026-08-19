@@ -341,14 +341,18 @@ function buildPanelController({ providerSelect, modelSelect, paramsEl, catalog }
 async function wireSavedPrompts(selectId, moduleKey, textareaId) {
   const select = $(selectId);
   try {
+    console.log(`[wireSavedPrompts] Fetching prompts for module=${moduleKey}`);
     const rows = await api(`/api/prompts?module=${moduleKey}`);
+    console.log(`[wireSavedPrompts] Got ${rows.length} rows for ${moduleKey}`);
     rows.forEach(r => {
       const o = document.createElement('option');
       o.value = r.full_prompt;
       o.textContent = r.headline;
       select.appendChild(o);
     });
-  } catch (e) { /* prompt library table may just be empty — fine */ }
+  } catch (e) {
+    console.error(`[wireSavedPrompts] Error loading prompts for ${moduleKey}:`, e.message);
+  }
 
   select.addEventListener('change', () => {
     if (select.value) $(textareaId).value = select.value;
@@ -408,8 +412,9 @@ async function initEdit() {
     paramsEl: $('edit-params'),
     catalog,
   });
+  // Wire saved prompts after catalog is loaded
+  wireSavedPrompts('edit-saved-prompt', 'edit', 'edit-prompt');
 }
-wireSavedPrompts('edit-saved-prompt', 'edit', 'edit-prompt');
 
 $('edit-go').addEventListener('click', async () => {
   const image_url = $('edit-url').value.trim();
