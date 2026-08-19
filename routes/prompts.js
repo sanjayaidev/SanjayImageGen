@@ -20,7 +20,8 @@ router.get('/', async (req, res) => {
 
 // POST /api/prompts
 // body: { module: 'generate'|'edit', headline, full_prompt, sub_category?, tags? }
-// Admin endpoint for adding rows to the saved-prompt dropdown from the UI.
+// Upserts by (module, headline): saving under a name you've already used
+// overwrites that row instead of creating a duplicate.
 router.post('/', async (req, res) => {
   try {
     const { module: moduleKey = 'generate', headline, full_prompt: fullPrompt, sub_category: subCategory, tags } = req.body || {};
@@ -33,14 +34,14 @@ router.post('/', async (req, res) => {
     if (!fullPrompt || !fullPrompt.trim()) {
       return res.status(400).json({ error: 'full_prompt is required' });
     }
-    const row = await db.createPrompt({
+    const row = await db.upsertPrompt({
       moduleKey,
       headline: headline.trim(),
       fullPrompt: fullPrompt.trim(),
       subCategory: subCategory || null,
       tags: Array.isArray(tags) ? tags : [],
     });
-    res.status(201).json(row);
+    res.status(row.overwritten ? 200 : 201).json(row);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

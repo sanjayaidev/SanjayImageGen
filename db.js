@@ -194,6 +194,28 @@ async function createPrompt({ moduleKey = 'generate', headline, fullPrompt, subC
   return rows[0];
 }
 
+// Insert, or overwrite in place (same id, keeps sort_order) if a prompt with
+// the same module_key + headline already exists. Used by both the quick
+// "Save prompt" button and the Manage Data card, so re-saving under a name
+// you've already used updates it instead of creating a duplicate.
+async function upsertPrompt({ moduleKey = 'generate', headline, fullPrompt, subCategory = null, tags = [] }) {
+  const existing = await pool.query(
+    'SELECT id FROM prompts WHERE module_key = $1 AND headline = $2 LIMIT 1',
+    [moduleKey, headline]
+  );
+  if (existing.rows.length) {
+    const { rows } = await pool.query(
+      `UPDATE prompts SET full_prompt = $1, sub_category = $2, tags = $3
+       WHERE id = $4
+       RETURNING id, module_key, headline, full_prompt, sub_category, tags`,
+      [fullPrompt, subCategory, tags, existing.rows[0].id]
+    );
+    return { ...rows[0], overwritten: true };
+  }
+  const row = await createPrompt({ moduleKey, headline, fullPrompt, subCategory, tags });
+  return { ...row, overwritten: false };
+}
+
 async function deletePrompt(id) {
   const { rowCount } = await pool.query('DELETE FROM prompts WHERE id = $1', [id]);
   return rowCount;
@@ -259,6 +281,7 @@ module.exports = {
   deleteImage,
   listPrompts,
   createPrompt,
+  upsertPrompt,
   deletePrompt,
   listPromptData,
   addPromptDataItem,

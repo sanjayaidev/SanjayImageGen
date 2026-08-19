@@ -66,6 +66,13 @@
   button.go:hover{background:var(--safelight-dim);}
   button.go:disabled{opacity:.5;cursor:default;}
 
+  button.save-prompt{
+    margin-top:8px;appearance:none;border:1px solid var(--developer);background:transparent;
+    color:var(--developer);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    padding:7px 14px;border-radius:2px;cursor:pointer;transition:all .2s;
+  }
+  button.save-prompt:hover{background:var(--developer);color:#fff;}
+
   .status{margin-top:14px;font-size:12px;color:#a39c8f;min-height:16px;}
   .status.err{color:var(--safelight);}
   .status.ok{color:var(--developer);}
@@ -717,6 +724,7 @@
 
     <label>Prompt</label>
     <textarea id="gen-prompt" placeholder="A lighthouse at dusk, storm clouds, long exposure, teal and amber palette"></textarea>
+    <button type="button" class="save-prompt" id="gen-save-prompt">💾 Save prompt</button>
 
     <div class="row">
       <div>
@@ -765,6 +773,7 @@
 
     <label>Edit instruction</label>
     <textarea id="edit-prompt" placeholder="Replace the sky with a starry night, keep everything else unchanged"></textarea>
+    <button type="button" class="save-prompt" id="edit-save-prompt">💾 Save prompt</button>
 
     <div class="row">
       <div>
@@ -1109,6 +1118,46 @@ async function wireSavedPrompts(selectId, moduleKey, textareaId) {
 function refreshSavedPromptDropdowns() {
   savedPromptDropdowns.forEach(({ select, moduleKey }) => reloadSavedPromptSelect(select, moduleKey));
 }
+
+// ── Quick "Save prompt" button (next to the prompt box) ──────────────
+async function saveCurrentPrompt(textareaId, moduleKey, buttonEl) {
+  const text = $(textareaId).value.trim();
+  if (!text) {
+    alert('Write a prompt first, then save it.');
+    return;
+  }
+  let name = window.prompt('Save this prompt as (short name, no spaces):');
+  if (name === null) return; // cancelled
+  name = name.trim();
+  if (!name) return;
+  if (/\s/.test(name)) {
+    alert('Name can\u2019t contain spaces \u2014 try underscores or dashes instead, e.g. "cyberpunk_city".');
+    return;
+  }
+
+  const original = buttonEl.textContent;
+  buttonEl.disabled = true;
+  buttonEl.textContent = 'Saving\u2026';
+  try {
+    const row = await api('/api/prompts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ module: moduleKey, headline: name, full_prompt: text }),
+    });
+    refreshSavedPromptDropdowns();
+    if ($('data-saved-prompts')) loadSavedPromptsAdmin();
+    buttonEl.textContent = row.overwritten ? 'Overwritten \u2713' : 'Saved \u2713';
+    setTimeout(() => { buttonEl.textContent = original; }, 1500);
+  } catch (e) {
+    alert('Failed to save prompt: ' + e.message);
+    buttonEl.textContent = original;
+  } finally {
+    buttonEl.disabled = false;
+  }
+}
+
+$('gen-save-prompt').addEventListener('click', () => saveCurrentPrompt('gen-prompt', 'generate', $('gen-save-prompt')));
+$('edit-save-prompt').addEventListener('click', () => saveCurrentPrompt('edit-prompt', 'edit', $('edit-save-prompt')));
 
 // ── Generate ──────────────────────────────────────────
 let genCtl = null;
