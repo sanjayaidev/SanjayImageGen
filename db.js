@@ -65,9 +65,19 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Building blocks for the "Prompt Generator" tab (subject / style /
+    -- lighting / mood / tag pickers + the Manage Data admin panel).
+    CREATE TABLE IF NOT EXISTS prompt_data (
+      id SERIAL PRIMARY KEY,
+      type TEXT NOT NULL CHECK (type IN ('subject','style','lighting','mood','tag')),
+      value TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_images_type ON images(type);
     CREATE INDEX IF NOT EXISTS idx_prompts_module ON prompts(module_key);
+    CREATE INDEX IF NOT EXISTS idx_prompt_data_type ON prompt_data(type);
   `);
   console.log('✅ Postgres schema ready');
 }
@@ -173,6 +183,68 @@ async function listPrompts({ moduleKey } = {}) {
   return rows;
 }
 
+// ── Saved prompts admin (create/delete for the dropdown) ──────────────
+async function createPrompt({ moduleKey = 'generate', headline, fullPrompt, subCategory = null, tags = [], sortOrder = 0 }) {
+  const { rows } = await pool.query(
+    `INSERT INTO prompts (module_key, headline, full_prompt, sub_category, tags, sort_order)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, module_key, headline, full_prompt, sub_category, tags`,
+    [moduleKey, headline, fullPrompt, subCategory, tags, sortOrder]
+  );
+  return rows[0];
+}
+
+async function deletePrompt(id) {
+  const { rowCount } = await pool.query('DELETE FROM prompts WHERE id = $1', [id]);
+  return rowCount;
+}
+
+// ── Prompt data (subject/style/lighting/mood/tag building blocks) ─────
+const PROMPT_DATA_TYPE_TO_KEY = {
+  subject: 'subjects',
+  style: 'styles',
+  lighting: 'lightings',
+  mood: 'moods',
+  tag: 'tags',
+};
+
+async function listPromptData() {
+  const { rows } = await pool.query(
+    'SELECT id, type, value FROM prompt_data ORDER BY type ASC, id ASC'
+  );
+  const grouped = { subjects: [], styles: [], lightings: [], moods: [], tags: [] };
+  for (const row of rows) {
+    const key = PROMPT_DATA_TYPE_TO_KEY[row.type];
+    if (key) grouped[key].push({ id: row.id, value: row.value });
+  }
+  return grouped;
+}
+
+async function addPromptDataItem(type, value) {
+  if (!PROMPT_DATA_TYPE_TO_KEY[type]) {
+    throw new Error(`type must be one of: ${Object.keys(PROMPT_DATA_TYPE_TO_KEY).join(', ')}`);
+  }
+  const { rows } = await pool.query(
+    'INSERT INTO prompt_data (type, value) VALUES ($1, $2) RETURNING id, type, value',
+    [type, value]
+  );
+  return rows[0];
+}
+
+async function deletePromptDataItem(id) {
+  const { rowCount } = await pool.query('DELETE FROM prompt_data WHERE id = $1', [id]);
+  return rowCount;
+}
+
+async function getPromptDataByIds(ids = []) {
+  if (!ids.length) return [];
+  const { rows } = await pool.query(
+    'SELECT id, type, value FROM prompt_data WHERE id = ANY($1::int[])',
+    [ids]
+  );
+  return rows;
+}
+
 module.exports = {
   pool,
   init,
@@ -186,4 +258,10 @@ module.exports = {
   getImage,
   deleteImage,
   listPrompts,
+  createPrompt,
+  deletePrompt,
+  listPromptData,
+  addPromptDataItem,
+  deletePromptDataItem,
+  getPromptDataByIds,
 };

@@ -8,6 +8,8 @@ const chatRoutes = require('./routes/chat');
 const imageRoutes = require('./routes/image');
 const historyRoutes = require('./routes/history');
 const promptsRoutes = require('./routes/prompts');
+const promptDataRoutes = require('./routes/prompt-data');
+const promptGenRoutes = require('./routes/prompt-gen');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,6 +36,8 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/image', imageRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/prompts', promptsRoutes);
+app.use('/api/prompt-data', promptDataRoutes);
+app.use('/api/prompt', promptGenRoutes);
 
 // Fallback 404 for unmatched API routes
 app.use('/api', (req, res) => res.status(404).json({ error: 'not found' }));
