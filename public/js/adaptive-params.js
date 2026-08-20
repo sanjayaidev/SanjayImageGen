@@ -29,6 +29,8 @@
 //   const values = panel.getValues();     // read right before submit
 //   panel.setSchema(newSchema);           // swap when model changes
 
+console.log('[SanjayImageGen] adaptive-params.js build marker: custom-resolution-debug-1');
+
 window.AdaptiveParams = (function () {
   let styleInjected = false;
 

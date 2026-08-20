@@ -1048,8 +1048,18 @@ function fillSelect(select, values, includeNone = true) {
 }
 
 // ── Generic provider/model/params controller ──────────────
+// DEBUG: bump this string whenever this file changes, and check it in the
+// browser console — if you don't see this exact line after a hard refresh,
+// the browser/server is serving a stale index.html, not the one you think.
+console.log('[SanjayImageGen] index.html build marker: custom-resolution-debug-1');
+
 function buildPanelController({ providerSelect, modelSelect, paramsEl, catalog }) {
   let panel = null;
+
+  // DEBUG: dump the full catalog once so you can see in DevTools > Console
+  // exactly what schema the server sent — including whether custom_size /
+  // width / height fields are present for a given model.
+  console.log('[SanjayImageGen] catalog received:', catalog);
 
   function modelsForProvider(provider) {
     return catalog.models[provider] || [];
@@ -1066,6 +1076,11 @@ function buildPanelController({ providerSelect, modelSelect, paramsEl, catalog }
 
   function renderParamsFor(model) {
     const schema = catalog.schemas[model] || {};
+    // DEBUG: log the schema for whichever model is currently selected,
+    // and explicitly flag whether custom-resolution fields are present.
+    console.log(`[SanjayImageGen] schema for "${model}":`, schema, {
+      hasCustomResolution: Object.prototype.hasOwnProperty.call(schema, 'custom_size'),
+    });
     if (!panel) panel = window.AdaptiveParams.mount(paramsEl, schema);
     else panel.setSchema(schema);
   }
