@@ -13,9 +13,10 @@
 //     default: any,
 //     options?: (string|number|{value, label})[],   // select only
 //     min?, max?, step?: number,                     // range & number only
-//     dependsOn?: string,    // name of a checkbox field gating this one —
-//                            // when that checkbox is off, this field is
-//                            // dimmed AND omitted entirely from getValues()
+//     dependsOn?: string,    // name of a controlling field (e.g. a select) —
+//                            // when that field's value doesn't match the
+//                            // expected trigger value ('custom' or truthy),
+//                            // this field is dimmed AND omitted from getValues()
 //     disabledWhen?: string, // name of a checkbox field that, when ON,
 //                            // dims this field AND omits it from
 //                            // getValues() (the inverse of dependsOn — e.g.
@@ -97,7 +98,10 @@ window.AdaptiveParams = (function () {
         if (!def.dependsOn && !def.disabledWhen) return;
         const wrap = fieldEls[key] && fieldEls[key].wrap;
         if (!wrap) return;
-        const dependsOffs = !!def.dependsOn && !state[def.dependsOn];
+        // For dependsOn with a checkbox (true/false), check truthiness.
+        // For dependsOn with a select (e.g. size_mode = 'custom'), check value match.
+        const controllingValue = state[def.dependsOn];
+        const dependsOffs = !!def.dependsOn && (controllingValue !== true && controllingValue !== 'custom');
         const supersededByOther = !!def.disabledWhen && !!state[def.disabledWhen];
         // disabledWhen fields (e.g. aspect_ratio once custom_size is on)
         // are hidden outright — they're superseded, not just "off".
@@ -112,7 +116,10 @@ window.AdaptiveParams = (function () {
       const out = {};
       Object.keys(schema).forEach((key) => {
         const def = schema[key];
-        if (def.dependsOn && !state[def.dependsOn]) return; // gated off — omit entirely
+        // For dependsOn with a checkbox (true/false), check truthiness.
+        // For dependsOn with a select (e.g. size_mode = 'custom'), check value match.
+        const controllingValue = state[def.dependsOn];
+        if (def.dependsOn && (controllingValue !== true && controllingValue !== 'custom')) return; // gated off — omit entirely
         if (def.disabledWhen && state[def.disabledWhen]) return; // overridden by another field — omit entirely
         out[key] = state[key];
       });
