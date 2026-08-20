@@ -61,12 +61,15 @@ const ALIBABA_VALID_SIZES = ['1024*1024', '1328*1328', '1664*928', '1472*1104', 
 
 function alibabaSchema(model) {
   const is3Pro = model === 'qwen-image-3.0-pro';
-  return {
+  const schema = {
     size: {
       type: 'select',
       label: 'Aspect ratio / size',
       options: is3Pro ? ALIBABA_SIZE_OPTIONS_3PRO : ALIBABA_SIZE_OPTIONS_STANDARD,
       default: is3Pro ? '' : '1328*1328',
+      // qwen-image-3.0-pro also accepts an arbitrary W*H below — once that's
+      // on, this preset dropdown no longer applies.
+      ...(is3Pro ? { disabledWhen: 'custom_size' } : {}),
     },
     n: {
       type: 'range',
@@ -97,6 +100,34 @@ function alibabaSchema(model) {
       default: false,
     },
   };
+
+  // Only qwen-image-3.0-pro accepts an arbitrary "W*H" (512–2048 either
+  // side); other Qwen-Image models are restricted to the verified preset
+  // sizes above, so the free-entry width/height fields are added for this
+  // model only.
+  if (is3Pro) {
+    schema.custom_size = {
+      type: 'checkbox',
+      label: 'Custom resolution',
+      default: false,
+    };
+    schema.width = {
+      type: 'number',
+      label: 'Width (px)',
+      min: 512, max: 2048, step: 8,
+      default: 1024,
+      dependsOn: 'custom_size',
+    };
+    schema.height = {
+      type: 'number',
+      label: 'Height (px)',
+      min: 512, max: 2048, step: 8,
+      default: 1024,
+      dependsOn: 'custom_size',
+    };
+  }
+
+  return schema;
 }
 
 // ── Cloudflare (Flux 1 Schnell) ───────────────────────────────────────
@@ -170,6 +201,17 @@ const TRANSLOADIT_ASPECT_OPTIONS = [
 
 const TRANSLOADIT_FORMAT_OPTIONS = ['png', 'jpeg', 'webp', 'gif', 'svg'];
 
+// Per https://transloadit.com/docs/robots/image-generate/, width/height are
+// "mainly used by Google image models and openai/gpt-image-2" — other
+// models (flux, recraft, the inpainting model) only take aspect_ratio, so
+// custom width/height inputs are only offered for these.
+const TRANSLOADIT_CUSTOM_SIZE_MODELS = [
+  'google/nano-banana',
+  'google/nano-banana-2',
+  'google/nano-banana-pro',
+  'openai/gpt-image-2',
+];
+
 const TRANSLOADIT_STYLE_OPTIONS = [
   { value: '', label: 'None' },
   { value: 'photorealistic', label: 'Photorealistic' },
@@ -181,15 +223,49 @@ const TRANSLOADIT_STYLE_OPTIONS = [
   { value: 'line art', label: 'Line art' },
 ];
 
-function transloaditSchema() {
-  return {
-    aspect_ratio: { type: 'select', label: 'Aspect ratio', options: TRANSLOADIT_ASPECT_OPTIONS, default: '1:1' },
+function transloaditSchema(model) {
+  const supportsCustomSize = TRANSLOADIT_CUSTOM_SIZE_MODELS.includes(model);
+
+  const schema = {
+    aspect_ratio: {
+      type: 'select',
+      label: 'Aspect ratio',
+      options: TRANSLOADIT_ASPECT_OPTIONS,
+      default: '1:1',
+      // Once a custom resolution is set, width/height take over and
+      // aspect_ratio is omitted from the request entirely.
+      ...(supportsCustomSize ? { disabledWhen: 'custom_size' } : {}),
+    },
     format: { type: 'select', label: 'Format', options: TRANSLOADIT_FORMAT_OPTIONS, default: 'png' },
     style: { type: 'select', label: 'Style', options: TRANSLOADIT_STYLE_OPTIONS, default: '' },
     num_outputs: { type: 'range', label: 'Number of outputs', min: 1, max: 10, step: 1, default: 1 },
     use_seed: { type: 'checkbox', label: 'Use fixed seed', default: false },
     seed: { type: 'range', label: 'Seed', min: 0, max: 999999999, step: 1, default: 0, dependsOn: 'use_seed' },
   };
+
+  if (supportsCustomSize) {
+    schema.custom_size = {
+      type: 'checkbox',
+      label: 'Custom resolution',
+      default: false,
+    };
+    schema.width = {
+      type: 'number',
+      label: 'Width (px)',
+      min: 256, max: 4096, step: 8,
+      default: 1024,
+      dependsOn: 'custom_size',
+    };
+    schema.height = {
+      type: 'number',
+      label: 'Height (px)',
+      min: 256, max: 4096, step: 8,
+      default: 1024,
+      dependsOn: 'custom_size',
+    };
+  }
+
+  return schema;
 }
 
 // ── Assemble full catalogs ────────────────────────────────────────────

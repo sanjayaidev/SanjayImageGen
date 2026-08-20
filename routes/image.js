@@ -86,8 +86,12 @@ router.post('/generate', async (req, res) => {
     if (provider === 'alibaba') {
       const alibaba = getAlibaba();
       usedModel = catalog.ALIBABA_GENERATE_MODELS.includes(model) ? model : catalog.ALIBABA_DEFAULT_GENERATE_MODEL;
+      // qwen-image-3.0-pro's custom-resolution toggle sends width/height
+      // instead of a preset `size` string — combine them the same way the
+      // /edit route already does.
+      const size2 = size || ((width && height) ? `${parseInt(width, 10)}*${parseInt(height, 10)}` : undefined);
       const result = await alibaba.imageGeneration(prompt, {
-        model: usedModel, size, seed, n, negative_prompt, prompt_extend, watermark,
+        model: usedModel, size: size2, seed, n, negative_prompt, prompt_extend, watermark,
       });
       providerImageUrl = result._imageUrls?.[0];
       if (!providerImageUrl) throw new Error('Alibaba returned no image');
