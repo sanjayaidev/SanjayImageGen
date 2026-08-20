@@ -109,7 +109,9 @@ router.post('/generate', async (req, res) => {
     } else if (provider === 'transloadit') {
       const transloadit = getTransloadit();
       usedModel = catalog.TRANSLOADIT_GENERATE_MODELS.includes(model) ? model : catalog.TRANSLOADIT_DEFAULT_MODEL;
-      const result = await transloadit.generateImage(prompt, { model: usedModel, width, height, aspect_ratio, seed, format, style, num_outputs });
+      // When size_mode is 'custom', use width/height; otherwise use aspect_ratio
+      const arValue = req.body.size_mode === 'custom' ? undefined : req.body.aspect_ratio;
+      const result = await transloadit.generateImage(prompt, { model: usedModel, width, height, aspect_ratio: arValue, seed, format, style, num_outputs });
       providerImageUrl = result.imageUrl;
     }
 
@@ -153,7 +155,9 @@ router.post('/edit', async (req, res) => {
     } else if (provider === 'transloadit') {
       const transloadit = getTransloadit();
       usedModel = catalog.TRANSLOADIT_EDIT_MODELS.includes(model) ? model : catalog.TRANSLOADIT_DEFAULT_MODEL;
-      const result = await transloadit.editImage(prompt, image_url, { model: usedModel, width, height, aspect_ratio, seed, format });
+      // When size_mode is 'custom', use width/height; otherwise use aspect_ratio
+      const arValue = req.body.size_mode === 'custom' ? undefined : req.body.aspect_ratio;
+      const result = await transloadit.editImage(prompt, image_url, { model: usedModel, width, height, aspect_ratio: arValue, seed, format });
       providerImageUrl = result.imageUrl;
     }
 
