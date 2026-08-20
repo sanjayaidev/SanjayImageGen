@@ -44,6 +44,12 @@ window.AdaptiveParams = (function () {
       @media (max-width: 640px) { .ap-panel { grid-template-columns: 1fr; } }
       .ap-field { transition: opacity .15s; }
       .ap-field.ap-full { grid-column: 1 / -1; }
+      /* Width + Height are grouped into one full-width row (see setSchema)
+         so they always sit side by side, regardless of which other fields
+         around them are hidden/shown (a hidden sibling shifting grid
+         auto-placement used to knock them apart onto separate rows). */
+      .ap-size-row { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+      @media (max-width: 640px) { .ap-size-row { grid-template-columns: 1fr; } }
       /* Fields gated off by disabledWhen (mutually exclusive with another
          field, e.g. aspect_ratio vs. custom width/height) are fully hidden
          — showing them dimmed still reads as "this option is active". */
@@ -95,41 +101,43 @@ window.AdaptiveParams = (function () {
     let state = {};
     let fieldEls = {};
 
+    // Resolves whether a dependsOn/disabledWhen "trigger" name currently
+    // holds. Two forms are supported:
+    //   1. The exact name of a checkbox field (e.g. 'use_seed',
+    //      'custom_size') — trigger is on when that checkbox is checked.
+    //   2. `<selectFieldKey>_custom` (e.g. 'size_mode_custom', pointing at
+    //      the `size_mode` select) — trigger is on when that select's
+    //      current value is 'custom'. The suffix must be stripped to find
+    //      the real controlling field; matching state[name] directly (the
+    //      previous bug) always looked up a key that doesn't exist and so
+    //      silently evaluated to "always off".
+    function resolveTrigger(name) {
+      if (Object.prototype.hasOwnProperty.call(schema, name)) {
+        return !!state[name];
+      }
+      if (name.endsWith('_custom')) {
+        const baseKey = name.slice(0, -'_custom'.length);
+        if (Object.prototype.hasOwnProperty.call(schema, baseKey)) {
+          return state[baseKey] === 'custom';
+        }
+      }
+      return false;
+    }
+
     function updateDependents() {
       Object.keys(schema).forEach((key) => {
         const def = schema[key];
         if (!def.dependsOn && !def.disabledWhen) return;
         const wrap = fieldEls[key] && fieldEls[key].wrap;
         if (!wrap) return;
-        
-        // Handle dependsOn: field is shown/enabled when controlling field matches expected value
-        let dependsOffs = false;
-        if (def.dependsOn) {
-          const controllingValue = state[def.dependsOn];
-          // For dependsOn with a checkbox (true/false), check truthiness.
-          // For dependsOn with a select, check if value matches 'custom' or specific trigger
-          if (typeof controllingValue === 'boolean') {
-            dependsOffs = !controllingValue;
-          } else if (typeof controllingValue === 'string') {
-            // Check if the dependsOn expects a specific value (e.g., 'size_mode_custom' expects 'custom')
-            const expectedValue = def.dependsOn.endsWith('_custom') ? 'custom' : 'custom';
-            dependsOffs = controllingValue !== expectedValue;
-          }
-        }
-        
-        // Handle disabledWhen: field is hidden when another field has a specific value
-        let supersededByOther = false;
-        if (def.disabledWhen) {
-          const disablingValue = state[def.disabledWhen];
-          // For disabledWhen with a select, check if value matches the trigger
-          if (typeof disablingValue === 'string') {
-            const expectedValue = def.disabledWhen.endsWith('_custom') ? 'custom' : true;
-            supersededByOther = disablingValue === expectedValue;
-          } else {
-            supersededByOther = !!disablingValue;
-          }
-        }
-        
+
+        // dependsOn: field is shown/enabled once its trigger is on.
+        const dependsOffs = def.dependsOn ? !resolveTrigger(def.dependsOn) : false;
+
+        // disabledWhen: field is hidden once its trigger is on (the
+        // inverse of dependsOn — e.g. aspect_ratio once custom size is on).
+        const supersededByOther = def.disabledWhen ? resolveTrigger(def.disabledWhen) : false;
+
         // disabledWhen fields (e.g. aspect_ratio once custom_size is on)
         // are hidden outright — they're superseded, not just "off".
         // dependsOn-only fields (e.g. Seed under "Use fixed seed") stay
@@ -143,33 +151,15 @@ window.AdaptiveParams = (function () {
       const out = {};
       Object.keys(schema).forEach((key) => {
         const def = schema[key];
-        
-        // Handle dependsOn: field is included when controlling field matches expected value
-        if (def.dependsOn) {
-          const controllingValue = state[def.dependsOn];
-          let shouldInclude = false;
-          if (typeof controllingValue === 'boolean') {
-            shouldInclude = controllingValue;
-          } else if (typeof controllingValue === 'string') {
-            const expectedValue = def.dependsOn.endsWith('_custom') ? 'custom' : 'custom';
-            shouldInclude = controllingValue === expectedValue;
-          }
-          if (!shouldInclude) return; // gated off — omit entirely
-        }
-        
-        // Handle disabledWhen: field is omitted when another field has a specific value
-        if (def.disabledWhen) {
-          const disablingValue = state[def.disabledWhen];
-          let isDisabled = false;
-          if (typeof disablingValue === 'string') {
-            const expectedValue = def.disabledWhen.endsWith('_custom') ? 'custom' : true;
-            isDisabled = disablingValue === expectedValue;
-          } else {
-            isDisabled = !!disablingValue;
-          }
-          if (isDisabled) return; // overridden by another field — omit entirely
-        }
-        
+
+        // dependsOn: field is included only while its trigger is on.
+        if (def.dependsOn && !resolveTrigger(def.dependsOn)) return;
+
+        // disabledWhen: field is omitted while its trigger is on (it's
+        // been superseded by the other field, e.g. custom width/height
+        // overriding aspect_ratio).
+        if (def.disabledWhen && resolveTrigger(def.disabledWhen)) return;
+
         out[key] = state[key];
       });
       return out;
@@ -318,10 +308,32 @@ window.AdaptiveParams = (function () {
       }
 
       keys.forEach((key) => { state[key] = schema[key].default; });
-      keys.forEach((key) => {
+
+      // Width + Height are rendered as a single full-width row so they
+      // always stay on the same line — see the .ap-size-row comment above.
+      let i = 0;
+      while (i < keys.length) {
+        const key = keys[i];
+        if (key === 'width' && keys[i + 1] === 'height') {
+          const widthEl = buildField('width', schema.width);
+          const heightEl = buildField('height', schema.height);
+          const row = document.createElement('div');
+          row.className = 'ap-field ap-full ap-size-row';
+          if (widthEl) row.appendChild(widthEl);
+          if (heightEl) row.appendChild(heightEl);
+          container.appendChild(row);
+          // Point both fields' tracked wrap at the shared row so
+          // show/hide + enable/disable toggling applies to the row as a
+          // whole (width and height always share the same gating).
+          if (fieldEls.width) fieldEls.width.wrap = row;
+          if (fieldEls.height) fieldEls.height.wrap = row;
+          i += 2;
+          continue;
+        }
         const el = buildField(key, schema[key]);
         if (el) container.appendChild(el);
-      });
+        i += 1;
+      }
 
       updateDependents();
     }
