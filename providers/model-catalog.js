@@ -226,46 +226,54 @@ const TRANSLOADIT_STYLE_OPTIONS = [
 function transloaditSchema(model) {
   const supportsCustomSize = TRANSLOADIT_CUSTOM_SIZE_MODELS.includes(model);
 
-  const schema = {
-    size_mode: {
+  const schema = {};
+
+  if (supportsCustomSize) {
+    schema.size_mode = {
       type: 'select',
       label: 'Size mode',
       options: [
         { value: 'aspect_ratio', label: 'Aspect Ratio' },
-        ...(supportsCustomSize ? [{ value: 'custom', label: 'Custom Resolution' }] : []),
+        { value: 'custom', label: 'Custom Resolution' },
       ],
       default: 'aspect_ratio',
-    },
-    aspect_ratio: {
+    };
+    schema.aspect_ratio = {
       type: 'select',
       label: 'Aspect ratio',
       options: TRANSLOADIT_ASPECT_OPTIONS,
       default: '1:1',
-      dependsOn: 'size_mode',
-    },
-    format: { type: 'select', label: 'Format', options: TRANSLOADIT_FORMAT_OPTIONS, default: 'png' },
-    style: { type: 'select', label: 'Style', options: TRANSLOADIT_STYLE_OPTIONS, default: '' },
-    num_outputs: { type: 'range', label: 'Number of outputs', min: 1, max: 10, step: 1, default: 1 },
-    use_seed: { type: 'checkbox', label: 'Use fixed seed', default: false },
-    seed: { type: 'range', label: 'Seed', min: 0, max: 999999999, step: 1, default: 0, dependsOn: 'use_seed' },
-  };
-
-  if (supportsCustomSize) {
+      disabledWhen: 'size_mode_custom',
+    };
     schema.width = {
       type: 'number',
       label: 'Width (px)',
       min: 256, max: 4096, step: 8,
       default: 1024,
-      dependsOn: 'size_mode',
+      dependsOn: 'size_mode_custom',
     };
     schema.height = {
       type: 'number',
       label: 'Height (px)',
       min: 256, max: 4096, step: 8,
       default: 1024,
-      dependsOn: 'size_mode',
+      dependsOn: 'size_mode_custom',
+    };
+  } else {
+    // Models that don't support custom resolution only get aspect_ratio
+    schema.aspect_ratio = {
+      type: 'select',
+      label: 'Aspect ratio',
+      options: TRANSLOADIT_ASPECT_OPTIONS,
+      default: '1:1',
     };
   }
+
+  schema.format = { type: 'select', label: 'Format', options: TRANSLOADIT_FORMAT_OPTIONS, default: 'png' };
+  schema.style = { type: 'select', label: 'Style', options: TRANSLOADIT_STYLE_OPTIONS, default: '' };
+  schema.num_outputs = { type: 'range', label: 'Number of outputs', min: 1, max: 10, step: 1, default: 1 };
+  schema.use_seed = { type: 'checkbox', label: 'Use fixed seed', default: false };
+  schema.seed = { type: 'range', label: 'Seed', min: 0, max: 999999999, step: 1, default: 0, dependsOn: 'use_seed' };
 
   return schema;
 }

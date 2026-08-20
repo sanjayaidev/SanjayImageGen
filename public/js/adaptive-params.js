@@ -52,6 +52,9 @@ window.AdaptiveParams = (function () {
          stay visible but dimmed, since they represent an optional control
          the user can still choose to turn on. */
       .ap-field.ap-disabled { opacity: .4; pointer-events: none; }
+      /* Width and height fields displayed side-by-side when both are present */
+      .ap-field.ap-size-field { grid-column: span 1; }
+      @media (max-width: 640px) { .ap-field.ap-size-field { grid-column: 1 / -1; } }
       .ap-label {
         display:flex; justify-content:space-between; align-items:baseline;
         font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:#8a8378;
@@ -98,11 +101,35 @@ window.AdaptiveParams = (function () {
         if (!def.dependsOn && !def.disabledWhen) return;
         const wrap = fieldEls[key] && fieldEls[key].wrap;
         if (!wrap) return;
-        // For dependsOn with a checkbox (true/false), check truthiness.
-        // For dependsOn with a select (e.g. size_mode = 'custom'), check value match.
-        const controllingValue = state[def.dependsOn];
-        const dependsOffs = !!def.dependsOn && (controllingValue !== true && controllingValue !== 'custom');
-        const supersededByOther = !!def.disabledWhen && !!state[def.disabledWhen];
+        
+        // Handle dependsOn: field is shown/enabled when controlling field matches expected value
+        let dependsOffs = false;
+        if (def.dependsOn) {
+          const controllingValue = state[def.dependsOn];
+          // For dependsOn with a checkbox (true/false), check truthiness.
+          // For dependsOn with a select, check if value matches 'custom' or specific trigger
+          if (typeof controllingValue === 'boolean') {
+            dependsOffs = !controllingValue;
+          } else if (typeof controllingValue === 'string') {
+            // Check if the dependsOn expects a specific value (e.g., 'size_mode_custom' expects 'custom')
+            const expectedValue = def.dependsOn.endsWith('_custom') ? 'custom' : 'custom';
+            dependsOffs = controllingValue !== expectedValue;
+          }
+        }
+        
+        // Handle disabledWhen: field is hidden when another field has a specific value
+        let supersededByOther = false;
+        if (def.disabledWhen) {
+          const disablingValue = state[def.disabledWhen];
+          // For disabledWhen with a select, check if value matches the trigger
+          if (typeof disablingValue === 'string') {
+            const expectedValue = def.disabledWhen.endsWith('_custom') ? 'custom' : true;
+            supersededByOther = disablingValue === expectedValue;
+          } else {
+            supersededByOther = !!disablingValue;
+          }
+        }
+        
         // disabledWhen fields (e.g. aspect_ratio once custom_size is on)
         // are hidden outright — they're superseded, not just "off".
         // dependsOn-only fields (e.g. Seed under "Use fixed seed") stay
@@ -116,11 +143,33 @@ window.AdaptiveParams = (function () {
       const out = {};
       Object.keys(schema).forEach((key) => {
         const def = schema[key];
-        // For dependsOn with a checkbox (true/false), check truthiness.
-        // For dependsOn with a select (e.g. size_mode = 'custom'), check value match.
-        const controllingValue = state[def.dependsOn];
-        if (def.dependsOn && (controllingValue !== true && controllingValue !== 'custom')) return; // gated off — omit entirely
-        if (def.disabledWhen && state[def.disabledWhen]) return; // overridden by another field — omit entirely
+        
+        // Handle dependsOn: field is included when controlling field matches expected value
+        if (def.dependsOn) {
+          const controllingValue = state[def.dependsOn];
+          let shouldInclude = false;
+          if (typeof controllingValue === 'boolean') {
+            shouldInclude = controllingValue;
+          } else if (typeof controllingValue === 'string') {
+            const expectedValue = def.dependsOn.endsWith('_custom') ? 'custom' : 'custom';
+            shouldInclude = controllingValue === expectedValue;
+          }
+          if (!shouldInclude) return; // gated off — omit entirely
+        }
+        
+        // Handle disabledWhen: field is omitted when another field has a specific value
+        if (def.disabledWhen) {
+          const disablingValue = state[def.disabledWhen];
+          let isDisabled = false;
+          if (typeof disablingValue === 'string') {
+            const expectedValue = def.disabledWhen.endsWith('_custom') ? 'custom' : true;
+            isDisabled = disablingValue === expectedValue;
+          } else {
+            isDisabled = !!disablingValue;
+          }
+          if (isDisabled) return; // overridden by another field — omit entirely
+        }
+        
         out[key] = state[key];
       });
       return out;
@@ -130,6 +179,8 @@ window.AdaptiveParams = (function () {
       const wrap = document.createElement('div');
       wrap.className = 'ap-field';
       if (def.type === 'select' && (def.options || []).length > 4) wrap.classList.add('ap-full');
+      // Mark width/height fields so they display side-by-side
+      if (key === 'width' || key === 'height') wrap.classList.add('ap-size-field');
 
       if (def.type === 'checkbox') {
         const row = document.createElement('div');
