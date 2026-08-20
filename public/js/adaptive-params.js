@@ -43,6 +43,13 @@ window.AdaptiveParams = (function () {
       @media (max-width: 640px) { .ap-panel { grid-template-columns: 1fr; } }
       .ap-field { transition: opacity .15s; }
       .ap-field.ap-full { grid-column: 1 / -1; }
+      /* Fields gated off by disabledWhen (mutually exclusive with another
+         field, e.g. aspect_ratio vs. custom width/height) are fully hidden
+         — showing them dimmed still reads as "this option is active". */
+      .ap-field.ap-hidden { display: none; }
+      /* Fields gated off by dependsOn (e.g. Seed under "Use fixed seed")
+         stay visible but dimmed, since they represent an optional control
+         the user can still choose to turn on. */
       .ap-field.ap-disabled { opacity: .4; pointer-events: none; }
       .ap-label {
         display:flex; justify-content:space-between; align-items:baseline;
@@ -90,10 +97,14 @@ window.AdaptiveParams = (function () {
         if (!def.dependsOn && !def.disabledWhen) return;
         const wrap = fieldEls[key] && fieldEls[key].wrap;
         if (!wrap) return;
-        let disabled = false;
-        if (def.dependsOn) disabled = disabled || !state[def.dependsOn];
-        if (def.disabledWhen) disabled = disabled || !!state[def.disabledWhen];
-        wrap.classList.toggle('ap-disabled', disabled);
+        const dependsOffs = !!def.dependsOn && !state[def.dependsOn];
+        const supersededByOther = !!def.disabledWhen && !!state[def.disabledWhen];
+        // disabledWhen fields (e.g. aspect_ratio once custom_size is on)
+        // are hidden outright — they're superseded, not just "off".
+        // dependsOn-only fields (e.g. Seed under "Use fixed seed") stay
+        // visible but dimmed, since the user may still switch them on.
+        wrap.classList.toggle('ap-hidden', supersededByOther);
+        wrap.classList.toggle('ap-disabled', dependsOffs && !supersededByOther);
       });
     }
 
