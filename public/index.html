@@ -1246,16 +1246,16 @@ $('edit-file').addEventListener('change', async (e) => {
 $('edit-go').addEventListener('click', async () => {
   let image_url = $('edit-url').value.trim();
   const prompt = $('edit-prompt').value.trim();
-  
-  if (editFileDataUrl && !image_url) {
-    return setStatus('edit-status', 'For edit operations, please provide a public URL. File upload is available but requires backend support for base64 input.', 'err');
-  }
-  
-  if (!image_url) return setStatus('edit-status', 'Source image URL is required.', 'err');
+
+  if (!image_url && !editFileDataUrl) return setStatus('edit-status', 'Source image URL or file upload is required.', 'err');
   if (!prompt) return setStatus('edit-status', 'Edit instruction is required.', 'err');
   if (!editCtl) return setStatus('edit-status', 'Still loading providers, try again in a second.', 'err');
 
-  const body = { prompt, image_url, provider: editCtl.getProvider(), model: editCtl.getModel(), ...editCtl.getParams() };
+  const body = {
+    prompt,
+    provider: editCtl.getProvider(), model: editCtl.getModel(), ...editCtl.getParams(),
+    ...(image_url ? { image_url } : { image_data_url: editFileDataUrl }),
+  };
 
   $('edit-go').disabled = true;
   $('edit-result').classList.remove('show');

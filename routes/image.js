@@ -141,14 +141,31 @@ router.post('/generate', async (req, res) => {
 });
 
 // POST /api/image/edit
-// body: { prompt, image_url, provider?: alibaba|transloadit, model?, ...providerParams }
+// body: { prompt, image_url?, image_data_url?, provider?: alibaba|transloadit, model?, ...providerParams }
+// Either image_url (a public URL) or image_data_url (a base64 data: URL,
+// e.g. from a file upload) must be provided. If only image_data_url is
+// given, it's transloaded to imgbb first so every provider (including
+// Transloadit, which fetches the source over HTTP) gets a public URL.
 router.post('/edit', async (req, res) => {
   try {
-    const { prompt, image_url, provider = 'alibaba', model, width, height, size, seed, aspect_ratio, format } = req.body || {};
+    const { prompt, image_url, image_data_url, provider = 'alibaba', model, width, height, size, seed, aspect_ratio, format } = req.body || {};
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'edit instruction (prompt) is required' });
-    if (!image_url || !image_url.trim()) return res.status(400).json({ error: 'image_url is required' });
+    if ((!image_url || !image_url.trim()) && (!image_data_url || !image_data_url.trim())) {
+      return res.status(400).json({ error: 'image_url or image_data_url is required' });
+    }
     if (!EDIT_PROVIDERS.includes(provider)) {
       return res.status(400).json({ error: `provider must be one of: ${EDIT_PROVIDERS.join(', ')}` });
+    }
+
+    // Resolve the source image to a public URL. Alibaba's API can actually
+    // accept a base64 data URI directly, but Transloadit's /http/import
+    // robot can't — so for a uploaded file we always host it on imgbb first
+    // and use that URL for both, keeping behavior consistent and simple.
+    let sourceUrl = image_url && image_url.trim();
+    if (!sourceUrl) {
+      const imgbbKey = requireEnv('IMGBB_API_KEY');
+      const uploadedSource = await uploadToImgbb(imgbbKey, { dataUrl: image_data_url });
+      sourceUrl = uploadedSource.url;
     }
 
     let providerImageUrl = null;
@@ -158,7 +175,7 @@ router.post('/edit', async (req, res) => {
       const alibaba = getAlibaba();
       usedModel = catalog.ALIBABA_EDIT_MODELS.includes(model) ? model : catalog.ALIBABA_DEFAULT_EDIT_MODEL;
       const size2 = size || ((width && height) ? `${parseInt(width)}*${parseInt(height)}` : undefined);
-      const result = await alibaba.imageEdit(prompt, image_url, { model: usedModel, size: size2, seed });
+      const result = await alibaba.imageEdit(prompt, sourceUrl, { model: usedModel, size: size2, seed });
       providerImageUrl = result._imageUrls?.[0];
       if (!providerImageUrl) throw new Error('Alibaba returned no edited image');
     } else if (provider === 'transloadit') {
@@ -167,7 +184,7 @@ router.post('/edit', async (req, res) => {
       // When size_mode is 'custom', use width/height; otherwise use aspect_ratio
       const arValue = req.body.size_mode === 'custom' ? undefined : req.body.aspect_ratio;
       const whValue = req.body.size_mode === 'custom' ? { width, height } : {};
-      const result = await transloadit.editImage(prompt, image_url, { 
+      const result = await transloadit.editImage(prompt, sourceUrl, { 
         model: usedModel, 
         aspect_ratio: arValue, 
         seed, 
@@ -182,7 +199,7 @@ router.post('/edit', async (req, res) => {
       prompt,
       provider,
       model: usedModel,
-      sourceImageUrl: image_url,
+      sourceImageUrl: sourceUrl,
       providerImageUrl,
       parameters: { width, height, size, seed, aspect_ratio, format },
     });
